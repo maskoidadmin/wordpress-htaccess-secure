@@ -1,0 +1,12 @@
+# .htaccess file by maskoid.com. This will improve performance, security, and functionality of your WordPress file.
+
+# BEGIN WORDPRESS
+<IfModule mod_rewrite.c>
+	RewriteEngine On
+	RewriteBase /
+	RewriteRule ^index\.php$ - [L]
+	RewriteCond %{REQUEST_FILENAME} !-f
+	RewriteCond %{REQUEST_FILENAME} !-d
+	RewriteRule . /index.php [L]
+</IfModule>
+# END WordPress
