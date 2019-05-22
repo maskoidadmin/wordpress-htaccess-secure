@@ -2,17 +2,22 @@
 # .htaccess file by maskoid.com. This will improve performance, security, and functionality of your WordPress file.
 ########################################################################################################################
 
-# BEGIN WORDPRESS
+# BEGIN WordPress
 <IfModule mod_rewrite.c>
-RewriteEngine On
-RewriteBase /
-RewriteCond %{query_string} concat.*\( [NC,OR]
-RewriteCond %{query_string} union.*select.*\( [NC,OR]
-RewriteCond %{query_string} union.*all.*select [NC]
-RewriteRule ^(.*)$ index.php [F,L]
-RewriteCond %{QUERY_STRING} base64_encode[^(]*\([^)]*\) [OR]
-RewriteCond %{QUERY_STRING} (<|%3C)([^s]*s)+cript.*(>|%3E) [NC,OR]
+  RewriteEngine On
+  RewriteBase /
+  ### SQL Injection Protection
+  RewriteCond %{QUERY_STRING} (\<|%3C).*script.*(\>|%3E) [NC,OR]
+  RewriteCond %{QUERY_STRING} GLOBALS(=|\[|\%[0-9A-Z]{0,2}) [OR]
+  RewriteCond %{QUERY_STRING} _REQUEST(=|\[|\%[0-9A-Z]{0,2})
+  RewriteRule ^(.*)$ index.php [F,L]
+  ### End SQL Injection Protection
+  RewriteRule ^index\.php$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.php [L]
 </IfModule>
+
 # END WordPress
 
 ########################################################################################################################
@@ -112,13 +117,24 @@ RewriteCond %{QUERY_STRING} (<|%3C)([^s]*s)+cript.*(>|%3E) [NC,OR]
 </IfModule>
 
 
-# PREVENTS OVERZEALOUS 404 ERRORS FROM APACHE
-# This setting prevents Apache from returning a 404 error as the result
-# of a rewrite when the directory with the same name does not exist.
-# See: 
-# * https://httpd.apache.org/docs/current/content-negotiation.html#multiviews
-# * https://www.infomaniak.com/en/support/faq/605/redirect-and-url-rewrite-issues-multiviews-option-in-htaccess
+# ----------------------------------------------------------------------
+# | Cross-origin resource timing                                       |
+# ----------------------------------------------------------------------
+
+# Allow cross-origin access to the timing information for all resources.
 #
+# If a resource isn't served with a `Timing-Allow-Origin` header that
+# would allow its timing information to be shared with the document,
+# some of the attributes of the `PerformanceResourceTiming` object will
+# be set to zero.
+#
+# http://www.w3.org/TR/resource-timing/
+# http://www.stevesouders.com/blog/2014/08/21/resource-timing-practical-tips/
+
+<IfModule mod_headers.c>
+	Header set Timing-Allow-Origin: "*"
+</IfModule>
+
 Options -MultiViews
 
 
@@ -282,6 +298,10 @@ AddDefaultCharset utf-8
   </FilesMatch>
 </IfModule>
 
+
+# ----------------------------------------------------------------------
+# | Compression                                                        |
+# ----------------------------------------------------------------------
 
 
 # COMPRESS WITH GZIP
@@ -471,7 +491,16 @@ ExpiresActive on
 
 
 
-# DISABLE ETAG
+# ----------------------------------------------------------------------
+# | ETags                                                              |
+# ----------------------------------------------------------------------
+
+# Remove `ETags` as resources are sent with far-future expires headers.
+#
+# https://developer.yahoo.com/performance/rules.html#etags
+# https://tools.ietf.org/html/rfc7232#section-2.3
+
+# `FileETag None` doesn't work in all cases.
 #
 <IfModule mod_headers.c>
   Header unset Pragma
@@ -558,6 +587,11 @@ ServerSignature Off
   satisfy all
 </Files>
 
+
+### Prevent WordPress' readme.html from being accessed (as it contains the version number)
+<files readme.html>
+Deny from all
+</files>
 
 
 # REMOVE THE `X-POWERED-BY` RESPONSE HEADER
@@ -691,7 +725,7 @@ AddDefaultCharset utf-8
 #RewriteRule ^ /? [L,R=301]
 
 
-#WP HARDENING SECURITY HEADERS
+#WP HARDENING SECURITY HEADERS Reducing MIME type security risks
 #
 <ifModule mod_headers.c>
   Header set X-XSS-Protection "1; mode=block"
@@ -699,6 +733,50 @@ AddDefaultCharset utf-8
   Header set X-Content-Type-Options: "nosniff"
 </ifModule>
 
+
+# 6G BLACKLIST/FIREWALL (beta)
+# @ https://perishablepress.com/6g-beta/
+
+# 6G:[REQUEST STRINGS]
+<ifModule mod_alias.c>
+	RedirectMatch 403 /(\$|\*)/?$
+	RedirectMatch 403 (?i)(<|>|:|;|\'|\s)
+	RedirectMatch 403 (?i)([a-zA-Z0-9]{18})
+	RedirectMatch 403 (?i)(https?|ftp|php)\:/
+	RedirectMatch 403 (?i)(\"|\.|\_|\&|\&amp)$
+	RedirectMatch 403 (?i)(\=\\\'|\=\\%27|/\\\'/?)\.
+	# RedirectMatch 403 (?i)/(author\-panel|submit\-articles)/?$
+	RedirectMatch 403 (?i)/(([0-9]{5})|([0-9]{6}))\-([0-9]{10})\.(gif|jpg|png)
+	RedirectMatch 403 (?i)(\,|//|\)\+|/\,/|\{0\}|\(/\(|\.\.|\+\+\+|\||\\\"\\\")
+	RedirectMatch 403 (?i)/uploads/([0-9]+)/([0-9]+)/(cache|cached|wp-opt|wp-supercache)\.php
+	RedirectMatch 403 (?i)\.(asp|bash|cfg|cgi|dll|exe|git|hg|ini|jsp|log|mdb|out|sql|svn|swp|tar|rar|rdf|well)
+	RedirectMatch 403 (?i)/(^$|1|addlink|btn_hover|contact?|dkscsearch|dompdf|easyboard|ezooms|formvars|fotter|fpw|i|imagemanager|index1|install|iprober|legacy\-comments|join|js\-scraper|mapcms|mobiquo|phpinfo|phpspy|pingserver|playing|postgres|product|register|scraper|shell|signup|single\-default|t|sqlpatch|test|textboxes.css|thumb|timthumb|topper|tz|ucp_profile|visit|webring.docs|webshell|wp\-lenks|wp\-links|wp\-plugin|wp\-signup|wpcima|zboard|zzr)\.php
+	RedirectMatch 403 (?i)/(\=|\$\&|\_mm|administrator|auth|bytest|cachedyou|cgi\-|cvs|config\.|crossdomain\.xml|dbscripts|e107|etc/passwd|function\.array\-rand|function\.parse\-url|livecalendar|localhost|makefile|muieblackcat|release\-notes|rnd|sitecore|tapatalk|wwwroot)
+	RedirectMatch 403 (?i)(\$\(this\)\.attr|\&pws\=0|\&t\=|\&title\=|\%7BshopURL\%7Dimages|\_vti\_|\(null\)|$itemURL|ask/data/ask|com\_crop|document\)\.ready\(fu|echo.*kae|eval\(|fckeditor\.htm|function.parse|function\(\)|gifamp|hilton.ch|index.php\&amp\;quot|jfbswww|monstermmorpg|msnbot\.htm|netdefender/hui|phpMyAdmin/config|proc/self|skin/zero_vote|/spaw2?|text/javascript|this.options)
+</ifModule>
+# 6G:[QUERY STRINGS]
+# (note: be sure to test extensively, as some might break your site)
+<IfModule mod_rewrite.c>
+	RewriteCond %{REQUEST_URI} !^/$ [NC]
+	RewriteCond %{QUERY_STRING} (mod|path|tag)= [NC,OR]
+	RewriteCond %{QUERY_STRING} ([a-zA-Z0-9]{32}) [NC,OR]
+	RewriteCond %{QUERY_STRING} (localhost|loopback|127\.0\.0\.1) [NC,OR]
+	RewriteCond %{QUERY_STRING} (\?|\.\./|\.|\*|:|;|<|>|'|"|\)|\[|\]|=\\\'$|%0A|%0D|%22|%27|%3C|%3E|%00|%2e%2e) [NC,OR]
+	RewriteCond %{QUERY_STRING} (benchmark|boot.ini|cast|declare|drop|echo.*kae|environ|etc/passwd|execute|input_file|insert|md5|mosconfig|scanner|select|set|union|update) [NC]
+	RewriteRule .* - [F,L]
+</IfModule>
+
+# 6G:[USER AGENTS]
+<ifModule mod_setenvif.c>
+	#SetEnvIfNoCase User-Agent ^$ keep_out
+	SetEnvIfNoCase User-Agent (<|>|'|&lt;|%0A|%0D|%27|%3C|%3E|%00|href\s) keep_out
+	SetEnvIfNoCase User-Agent (archiver|binlar|casper|checkprivacy|clshttp|cmsworldmap|comodo|curl|diavol|dotbot|email|extract|feedfinder|flicky|grab|harvest|httrack|ia_archiver|kmccrew|libwww|loader|miner|nikto|nutch|planetwork|purebot|pycurl|python|scan|skygrid|sucker|turnit|vikspider|wget|winhttp|youda|zmeu|zune) keep_out
+	<limit GET POST PUT>
+		Order Allow,Deny
+		Allow from all
+		Deny from env=keep_out
+	</limit>
+</ifModule>
 
 
 
